@@ -1,5 +1,3 @@
-Flask
+flask
 line-bot-sdk
-requests
-beautifulsoup4
-gunicorn
+twstock
