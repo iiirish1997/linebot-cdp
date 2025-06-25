@@ -1,5 +1,4 @@
 flask
 line-bot-sdk
+pandas
 requests
-beautifulsoup4
-gunicorn
