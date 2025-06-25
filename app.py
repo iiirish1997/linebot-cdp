@@ -57,17 +57,17 @@ def fetch_single_stock(stock_no):
 
     return None
 
-def calculate_cdp_website_model(high, low, close):
-    cdp = (high + low + close) / 3
-    strong_resist = round(cdp + 2 * (cdp - low), 2)  # 多頭區 -> 強壓
-    weak_resist = round(cdp + (cdp - low), 2)        # 轉強 -> 弱壓
-    weak_support = round(cdp - (high - cdp), 2)      # 轉弱 -> 弱撐
-    strong_support = round(cdp - 2 * (high - cdp), 2) # 空頭 -> 強撐
+def calculate_cdp_custom(high, low, close):
+    cdp = (high + low + 2 * close) / 4
+    ah = round(cdp + (high - low), 2)         # AH
+    nh = round(2 * cdp - low, 2)              # NH
+    nl = round(2 * cdp - high, 2)             # NL
+    al = round(cdp - (high - low), 2)         # AL
     return {
-        "AH": strong_resist,
-        "H": weak_resist,
-        "L": weak_support,
-        "AL": strong_support
+        "AH": ah,
+        "NH": nh,
+        "NL": nl,
+        "AL": al
     }
 
 @handler.add(MessageEvent, message=TextMessage)
@@ -80,17 +80,17 @@ def handle_message(event):
         stock_info = fetch_single_stock(text)
         if stock_info:
             high, low, close = stock_info["high"], stock_info["low"], stock_info["close"]
-            cdp = calculate_cdp_website_model(high, low, close)
+            cdp_result = calculate_cdp_custom(high, low, close)
             msg = (
                 f"📌 {text} 今日行情\n"
                 f"📉 收盤：{close}\n"
                 f"📈 高點：{high}\n"
                 f"📉 低點：{low}\n"
-                f"\n📊 明日撐壓（網站版）\n"
-                f"🔺 強壓：{cdp['AH']}\n"
-                f"🔻 弱壓：{cdp['H']}\n"
-                f"🔻 弱撐：{cdp['L']}\n"
-                f"🔽 強撐：{cdp['AL']}"
+                f"\n📊 明日撐壓（圖片公式版）\n"
+                f"🔺 AH（強壓）：{cdp_result['AH']}\n"
+                f"🔻 NH（弱壓）：{cdp_result['NH']}\n"
+                f"🔻 NL（弱撐）：{cdp_result['NL']}\n"
+                f"🔽 AL（強撐）：{cdp_result['AL']}"
             )
         else:
             msg = f"❓ 查無「{text}」的資料，可能資料尚未更新或代碼錯誤。"
