@@ -86,11 +86,11 @@ def handle_message(event):
                 f"📉 收盤：{close}\n"
                 f"📈 高點：{high}\n"
                 f"📉 低點：{low}\n"
-                f"\n📊 明日撐壓（圖片公式版）\n"
-                f"🔺 AH（強壓）：{cdp_result['AH']}\n"
-                f"🔻 NH（弱壓）：{cdp_result['NH']}\n"
-                f"🔻 NL（弱撐）：{cdp_result['NL']}\n"
-                f"🔽 AL（強撐）：{cdp_result['AL']}"
+                f"\n📊 明日撐壓\n"
+                f"🔺 AH：{cdp_result['AH']}\n"
+                f"🔻 NH：{cdp_result['NH']}\n"
+                f"🔻 NL：{cdp_result['NL']}\n"
+                f"🔽 AL：{cdp_result['AL']}"
             )
         else:
             msg = f"❓ 查無「{text}」的資料，可能資料尚未更新或代碼錯誤。"
