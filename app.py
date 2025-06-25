@@ -71,23 +71,14 @@ def handle_message(event):
         return
     result = calc_cdp_formula(stock_data["close"], stock_data["high"], stock_data["low"])
     reply = (
-        f"📌 {stock_id} 今日行情
-"
-        f"📉 收盤：{stock_data['close']}
-"
-        f"📈 高點：{stock_data['high']}
-"
-        f"📉 低點：{stock_data['low']}
-
-"
-        f"📊 明日撐壓
-"
-        f"🔺 強壓：{result['AH']}
-"
-        f"🔻 弱壓：{result['NH']}
-"
-        f"🔻 弱撐：{result['NL']}
-"
+        f"📌 {stock_id} 今日行情\n"
+        f"📉 收盤：{stock_data['close']}\n"
+        f"📈 高點：{stock_data['high']}\n"
+        f"📉 低點：{stock_data['low']}\n\n"
+        f"📊 明日撐壓\n"
+        f"🔺 強壓：{result['AH']}\n"
+        f"🔻 弱壓：{result['NH']}\n"
+        f"🔻 弱撐：{result['NL']}\n"
         f"🔽 強撐：{result['AL']}"
     )
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
