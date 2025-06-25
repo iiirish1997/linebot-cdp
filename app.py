@@ -44,7 +44,7 @@ def fetch_tse_data():
                 low = float(row[5].replace(",", ""))
                 close = float(row[6].replace(",", ""))
                 stock_data[code] = {"name": name, "high": high, "low": low, "close": close}
-                stock_data[name] = stock_data[code]  # 讓用名稱也可以查
+                stock_data[name] = stock_data[code]  # 也允許名稱查詢
             except:
                 continue
     return stock_data
@@ -67,7 +67,9 @@ def handle_message(event):
     text = event.message.text.strip()
     stock_data = fetch_tse_data()
 
-    if text in stock_data:
+    if not stock_data:
+        msg = "⚠️ 今日資料尚未公布，請於收盤後（15:00 後）再試。"
+    elif text in stock_data:
         info = stock_data[text]
         high, low, close = info["high"], info["low"], info["close"]
         cdp = calculate_cdp(high, low, close)
