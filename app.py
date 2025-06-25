@@ -34,7 +34,8 @@ def fetch_stock_data(stock_id):
         url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=csv&date={today}&type=ALL"
     else:
         # 上櫃股票
-        url = f"https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=csv&d={today[:4]}/{today[4:6]}/{today[6:]}"
+        roc_date = f"{int(today[:4]) - 1911}/{today[4:6]}/{today[6:]}"
+        url = f"https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=csv&d={roc_date}"
 
     try:
         res = requests.get(url)
@@ -44,9 +45,9 @@ def fetch_stock_data(stock_id):
         df = df[df.iloc[:, 0].astype(str).str.strip() == stock_id]
         if df.empty:
             return None
-        close = float(df.iloc[0, 2])
-        high = float(df.iloc[0, 4])
-        low = float(df.iloc[0, 5])
+        close = float(str(df.iloc[0, 2]).replace(',', ''))
+        high = float(str(df.iloc[0, 4]).replace(',', ''))
+        low = float(str(df.iloc[0, 5]).replace(',', ''))
         return {"close": close, "high": high, "low": low}
     except:
         return None
@@ -64,12 +65,15 @@ def handle_message(event):
     stock_id = event.message.text.strip()
     if not stock_id.isdigit():
         return
+
     stock_data = fetch_stock_data(stock_id)
     if not stock_data:
         reply = "⚠️ 無法取得資料，可能代碼錯誤或資料尚未更新。"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         return
+
     result = calc_cdp_formula(stock_data["close"], stock_data["high"], stock_data["low"])
+
     reply = (
         f"📌 {stock_id} 今日行情\n"
         f"📉 收盤：{stock_data['close']}\n"
@@ -81,4 +85,5 @@ def handle_message(event):
         f"🔻 弱撐：{result['NL']}\n"
         f"🔽 強撐：{result['AL']}"
     )
+
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
