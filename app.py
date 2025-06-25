@@ -10,6 +10,7 @@ from datetime import datetime
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 app = Flask(__name__)
 
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
@@ -23,22 +24,24 @@ def home():
 def callback():
     signature = request.headers["X-Line-Signature"]
     body = request.get_data(as_text=True)
+
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
         abort(400)
+
     return "OK"
+
+def is_tse(code):
+    return code.startswith(('1', '2', '3', '4', '5', '6', '9'))
 
 def fetch_tse_data():
     today = datetime.today().strftime('%Y%m%d')
     url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={today}&type=ALL"
     res = requests.get(url, verify=False)
-    try:
-        data = res.json()
-    except:
-        return {}
-
+    data = res.json()
     stock_data = {}
+
     if "data9" in data:
         for row in data["data9"]:
             code = row[0].strip()
@@ -53,27 +56,26 @@ def fetch_tse_data():
                 continue
     return stock_data
 
-def fetch_goodinfo_data(code):
+def fetch_otc_data(code):
     url = f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={code}"
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://goodinfo.tw/tw/index.asp"
-    }
+    headers = {"User-Agent": "Mozilla/5.0"}
     res = requests.get(url, headers=headers)
     soup = BeautifulSoup(res.text, "html.parser")
     try:
         table = soup.find("table", class_="b1 p4_2 r10 box_shadow")
-        rows = table.select("tr")
-        for row in rows:
-            cells = row.find_all("td")
-            if len(cells) >= 11 and "當日收盤價" in cells[0].text:
-                close = float(cells[1].text.strip())
-                high = float(cells[4].text.strip())
-                low = float(cells[5].text.strip())
-                return {"name": "", "high": high, "low": low, "close": close}
+        tds = table.find_all("td")
+        high, low, close = None, None, None
+        for idx, td in enumerate(tds):
+            if "最高" in td.text:
+                high = float(tds[idx + 1].text.strip())
+            elif "最低" in td.text:
+                low = float(tds[idx + 1].text.strip())
+            elif "收盤" in td.text:
+                close = float(tds[idx + 1].text.strip())
+        if high and low and close:
+            return {"name": code, "high": high, "low": low, "close": close}
     except:
         return None
-    return None
 
 def calculate_cdp(high, low, close):
     cdp = (high + low + 2 * close) / 4
@@ -91,30 +93,25 @@ def calculate_cdp(high, low, close):
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
-    code = text
-    tse_data = fetch_tse_data()
-
-    if code in tse_data:
-        info = tse_data[code]
-    else:
-        info = fetch_goodinfo_data(code)
+    stock_data = fetch_tse_data() if is_tse(text) else {}
+    info = stock_data.get(text) or fetch_otc_data(text)
 
     if not info:
-        msg = f"❓ 查無 [{code}] 的資料，可能資料尚未更新或代碼錯誤。"
+        msg = f"❓ 查無 [{text}] 的資料，可能資料尚未更新或代碼錯誤。"
     else:
         high, low, close = info["high"], info["low"], info["close"]
         cdp = calculate_cdp(high, low, close)
         msg = (
-            f"📌 {code} 今日行情
+            f"📌 {text} 今日行情
 "
-            f"📩 收盤：{close}
+            f"📉 收盤：{close}
 "
             f"📈 高點：{high}
 "
             f"📉 低點：{low}
+
 "
-            f"
-📊 明日撐壓
+            f"📊 明日撐壓
 "
             f"🔺 強壓：{cdp['AH']}
 "
