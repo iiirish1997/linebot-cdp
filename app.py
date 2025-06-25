@@ -3,6 +3,8 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import os
+import requests
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -25,22 +27,62 @@ def callback():
 
     return "OK"
 
+def fetch_tse_data():
+    """抓取當日台股收盤資料"""
+    today = datetime.today().strftime('%Y%m%d')
+    url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={today}&type=ALL"
+    res = requests.get(url)
+    data = res.json()
+    stock_data = {}
+
+    if "data9" in data:
+        for row in data["data9"]:
+            code = row[0].strip()
+            name = row[1].strip()
+            try:
+                high = float(row[4].replace(",", ""))
+                low = float(row[5].replace(",", ""))
+                close = float(row[6].replace(",", ""))
+                stock_data[code] = {"name": name, "high": high, "low": low, "close": close}
+                stock_data[name] = stock_data[code]  # 讓用名稱也可以查
+            except:
+                continue
+    return stock_data
+
+def calculate_cdp(high, low, close):
+    """計算 CDP 區間"""
+    cdp = (high + low + close) / 3
+    ah = cdp + (high - low)
+    al = cdp - (high - low)
+    return {
+        "AH": round(ah, 2),
+        "H": round((cdp + high) / 2, 2),
+        "CDP": round(cdp, 2),
+        "L": round((cdp + low) / 2, 2),
+        "AL": round(al, 2)
+    }
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
-    if text.startswith("CDP "):
-        try:
-            price = float(text.split(" ")[1])
-            h = round(price * 1.02, 2)
-            l = round(price * 0.98, 2)
-            tc = round((h + l + price) / 3, 2)
-            ah = round(tc + (h - l), 2)
-            al = round(tc - (h - l), 2)
-            msg = f"🔍 根據輸入價格 {price}\nCDP參考區間：\n・AH：{ah}\n・H：{h}\n・TC：{tc}\n・L：{l}\n・AL：{al}"
-        except:
-            msg = "格式錯誤，請輸入：CDP 價格（例如：CDP 100）"
+    stock_data = fetch_tse_data()
+
+    if text in stock_data:
+        info = stock_data[text]
+        high, low, close = info["high"], info["low"], info["close"]
+        cdp = calculate_cdp(high, low, close)
+        msg = (
+            f"📈 {text}（{info['name']}）今日數據\n"
+            f"收盤：{close}｜最高：{high}｜最低：{low}\n"
+            f"\n🔍 隔日 CDP 區間：\n"
+            f"・AH：{cdp['AH']}\n"
+            f"・H：{cdp['H']}\n"
+            f"・CDP：{cdp['CDP']}\n"
+            f"・L：{cdp['L']}\n"
+            f"・AL：{cdp['AL']}"
+        )
     else:
-        msg = "請輸入「CDP 價格」來計算（例如：CDP 100）"
+        msg = "請輸入正確的股票代碼或名稱（如：2330 或 台積電）"
 
     line_bot_api.reply_message(
         event.reply_token,
