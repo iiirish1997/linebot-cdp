@@ -7,7 +7,7 @@ import requests
 from datetime import datetime
 import urllib3
 
-# 關閉 SSL 警告
+# 關閉 SSL 警告（TWSE 憑證問題）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
@@ -35,7 +35,7 @@ def fetch_tse_data():
     """抓取當日台股收盤資料"""
     today = datetime.today().strftime('%Y%m%d')
     url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={today}&type=ALL"
-    res = requests.get(url, verify=False)  # 關鍵修改點：加 verify=False
+    res = requests.get(url, verify=False)
     data = res.json()
     stock_data = {}
 
@@ -78,14 +78,15 @@ def handle_message(event):
         high, low, close = info["high"], info["low"], info["close"]
         cdp = calculate_cdp(high, low, close)
         msg = (
-            f"📈 {text}（{info['name']}）今日數據\n"
-            f"收盤：{close}｜最高：{high}｜最低：{low}\n"
-            f"\n🔍 隔日 CDP 區間：\n"
-            f"・AH：{cdp['AH']}\n"
-            f"・H：{cdp['H']}\n"
-            f"・CDP：{cdp['CDP']}\n"
-            f"・L：{cdp['L']}\n"
-            f"・AL：{cdp['AL']}"
+            f"📌 {text}　{info['name']}　今日行情\n"
+            f"📉 收盤：{close}\n"
+            f"📈 高點：{high}\n"
+            f"📉 低點：{low}\n"
+            f"\n📊 明日撐壓\n"
+            f"🔺 強壓：{cdp['AH']}\n"
+            f"🔻 弱壓：{cdp['H']}\n"
+            f"🔻 弱撐：{cdp['L']}\n"
+            f"🔽 強撐：{cdp['AL']}"
         )
     else:
         msg = "請輸入正確的股票代碼或名稱（如：2330 或 台積電）"
