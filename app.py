@@ -1,10 +1,11 @@
-
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import os
-from twstock import Stock
+import requests
+from bs4 import BeautifulSoup
+import re
 
 app = Flask(__name__)
 
@@ -13,7 +14,7 @@ handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
 @app.route("/", methods=["GET"])
 def home():
-    return "CDP bot with twstock is running."
+    return "CDP bot with goodinfo is running."
 
 @app.route("/", methods=["POST"])
 def callback():
@@ -29,20 +30,31 @@ def callback():
 
 def fetch_stock_data(stock_id):
     try:
-        stock = Stock(stock_id)
-        stock.fetch_31()
+        url = f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={stock_id}"
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+        res = requests.get(url, headers=headers, timeout=10)
+        res.encoding = "utf-8"
+        soup = BeautifulSoup(res.text, "html.parser")
+        table = soup.find("table", class_="b1 p4_2 r10 box_shadow")
 
-        if not stock.price or not stock.high or not stock.low or not stock.close:
+        if table is None:
             return None
 
-        return {
-            "close": stock.close[-1],
-            "high": stock.high[-1],
-            "low": stock.low[-1]
-        }
+        text = table.text
+        match = re.search(r"收盤 (.+?) .+?最高 (.+?) .+?最低 (.+?) ", text)
+
+        if not match:
+            return None
+
+        close = float(match.group(1).replace(',', ''))
+        high = float(match.group(2).replace(',', ''))
+        low = float(match.group(3).replace(',', ''))
+
+        return {"close": close, "high": high, "low": low}
 
     except Exception as e:
-        print(f"抓資料錯誤: {e}")
         return None
 
 def calc_cdp_formula(close, high, low):
@@ -61,15 +73,13 @@ def calc_cdp_formula(close, high, low):
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     stock_id = event.message.text.strip()
-    print(f"使用者輸入：{stock_id}")
-
     if not stock_id.isdigit():
         return
 
     stock_data = fetch_stock_data(stock_id)
 
     if not stock_data:
-        reply = "⚠️ 無法取得資料，可能代碼錯誤或尚未更新。"
+        reply = "⚠️ 無法取得資料，可能代碼錯誤或資料尚未更新。"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         return
 
@@ -87,8 +97,4 @@ def handle_message(event):
         f"🔽 強撐：{result['AL']}"
     )
 
-    try:
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-        print("回覆成功")
-    except Exception as e:
-        print(f"回覆錯誤：{e}")
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
