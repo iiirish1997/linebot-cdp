@@ -5,6 +5,10 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import os
 import requests
 from datetime import datetime
+import urllib3
+
+# 關閉 SSL 警告
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
@@ -31,7 +35,7 @@ def fetch_tse_data():
     """抓取當日台股收盤資料"""
     today = datetime.today().strftime('%Y%m%d')
     url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={today}&type=ALL"
-    res = requests.get(url)
+    res = requests.get(url, verify=False)  # 關鍵修改點：加 verify=False
     data = res.json()
     stock_data = {}
 
@@ -44,7 +48,7 @@ def fetch_tse_data():
                 low = float(row[5].replace(",", ""))
                 close = float(row[6].replace(",", ""))
                 stock_data[code] = {"name": name, "high": high, "low": low, "close": close}
-                stock_data[name] = stock_data[code]  # 也允許名稱查詢
+                stock_data[name] = stock_data[code]
             except:
                 continue
     return stock_data
