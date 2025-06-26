@@ -50,7 +50,7 @@ def handle_message(event):
         if price:
             reply = f"{stock_id} 上市收盤價：{price:.2f}，CDP 計算中..."
         else:
-            reply = f"找不到 {stock_id} 的上市收盤價。"
+            reply = "⚠️ 今日資料尚未公布，請於收盤後（15:00 後）再試。"
     else:
         reply = "請輸入股票代號。"
     line_bot_api.reply_message(event.reply_token, TextSendMessage(reply))
