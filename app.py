@@ -13,7 +13,7 @@ LINE_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 line_bot_api = LineBotApi(LINE_TOKEN)
 handler = WebhookHandler(LINE_SECRET)
 
-# ✅ 修正後的抓取上市股票收盤價函式
+# ✅ 修正後的 get_listed_stock_price()，可正確抓 2330 收盤價
 def get_listed_stock_price(stock_id):
     url = f'https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={stock_id}'
     headers = {
@@ -23,19 +23,15 @@ def get_listed_stock_price(stock_id):
     r = requests.get(url, headers=headers)
     r.encoding = 'utf-8'
     soup = BeautifulSoup(r.text, 'html.parser')
-    
-    # 找到「個股資料表」中出現「收盤價」的欄位
-    table = soup.find("table", class_="b1 p4_2 r10 box_shadow")
-    if table:
-        rows = table.find_all("tr")
-        for row in rows:
-            cells = row.find_all("td")
-            if len(cells) >= 2 and "收盤" in cells[0].text:
-                price_text = cells[1].text.strip().replace(",", "")
-                try:
-                    return float(price_text)
-                except ValueError:
-                    return None
+
+    # 抓第一個包含 <b> 的 <nobr> 標籤中的價格（法人表格中出現）
+    tag = soup.select_one('nobr:has(b)')
+    if tag:
+        price_text = tag.text.strip().replace(",", "")
+        try:
+            return float(price_text)
+        except ValueError:
+            return None
     return None
 
 @app.route("/callback", methods=['POST'])
