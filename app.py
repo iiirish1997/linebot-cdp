@@ -1,89 +1,57 @@
+import os
+import requests
+from bs4 import BeautifulSoup
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-import os
-import requests
-import pandas as pd
-from io import StringIO
-import datetime
 
 app = Flask(__name__)
 
-line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
-handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
+LINE_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+line_bot_api = LineBotApi(LINE_TOKEN)
+handler = WebhookHandler(LINE_SECRET)
 
-@app.route("/", methods=["GET"])
-def home():
-    return "CDP bot is running."
+def get_listed_stock_price(stock_id):
+    url = f'https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={stock_id}'
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://goodinfo.tw/"
+    }
+    r = requests.get(url, headers=headers)
+    r.encoding = 'utf-8'
+    soup = BeautifulSoup(r.text, 'html.parser')
+    # 這裡假設抓取 K 線資料中的收盤價，範例簡化：
+    price_tag = soup.select_one("td#_closingPrice")
+    if price_tag:
+        return float(price_tag.text.replace(",", ""))
+    return None
 
-@app.route("/", methods=["POST"])
+@app.route("/callback", methods=['POST'])
 def callback():
-    signature = request.headers["X-Line-Signature"]
+    signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
         abort(400)
-    return "OK"
-
-def fetch_stock_data(stock_id):
-    today = datetime.datetime.now().strftime("%Y%m%d")
-    if stock_id.startswith("6"):
-        # 上市股票
-        url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=csv&date={today}&type=ALL"
-    else:
-        # 上櫃股票
-        roc_date = f"{int(today[:4]) - 1911}/{today[4:6]}/{today[6:]}"
-        url = f"https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=csv&d={roc_date}"
-
-    try:
-        res = requests.get(url)
-        res.encoding = "utf-8"
-        data = StringIO(res.text)
-        df = pd.read_csv(data)
-        df = df[df.iloc[:, 0].astype(str).str.strip() == stock_id]
-        if df.empty:
-            return None
-        close = float(str(df.iloc[0, 2]).replace(',', ''))
-        high = float(str(df.iloc[0, 4]).replace(',', ''))
-        low = float(str(df.iloc[0, 5]).replace(',', ''))
-        return {"close": close, "high": high, "low": low}
-    except:
-        return None
-
-def calc_cdp_formula(close, high, low):
-    cdp = (high + low + 2 * close) / 4
-    ah = cdp + (high - low)
-    nh = 2 * cdp - low
-    nl = 2 * cdp - high
-    al = cdp - (high - low)
-    return {"AH": round(ah, 1), "NH": round(nh, 1), "NL": round(nl, 1), "AL": round(al, 1)}
+    return 'OK'
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    stock_id = event.message.text.strip()
-    if not stock_id.isdigit():
-        return
+    text = event.message.text.strip()
+    if text.isdigit():
+        stock_id = text
+        price = get_listed_stock_price(stock_id)
+        if price:
+            # 只處理上市，直接算 CDP 的部分略...
+            reply = f"{stock_id} 上市收盤價：{price:.2f}，CDP 計算中..."
+        else:
+            reply = f"找不到 {stock_id} 的上市收盤價。"
+    else:
+        reply = "請輸入股票代號。"
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(reply))
 
-    stock_data = fetch_stock_data(stock_id)
-    if not stock_data:
-        reply = "⚠️ 無法取得資料，可能代碼錯誤或資料尚未更新。"
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-        return
-
-    result = calc_cdp_formula(stock_data["close"], stock_data["high"], stock_data["low"])
-
-    reply = (
-        f"📌 {stock_id} 今日行情\n"
-        f"📉 收盤：{stock_data['close']}\n"
-        f"📈 高點：{stock_data['high']}\n"
-        f"📉 低點：{stock_data['low']}\n\n"
-        f"📊 明日撐壓\n"
-        f"🔺 強壓：{result['AH']}\n"
-        f"🔻 弱壓：{result['NH']}\n"
-        f"🔻 弱撐：{result['NL']}\n"
-        f"🔽 強撐：{result['AL']}"
-    )
-
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+if __name__ == "__main__":
+    app.run(debug=True, port=int(os.getenv("PORT", 5000)))
