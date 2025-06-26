@@ -13,25 +13,25 @@ LINE_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 line_bot_api = LineBotApi(LINE_TOKEN)
 handler = WebhookHandler(LINE_SECRET)
 
-# ✅ 修正後的 get_listed_stock_price()，可正確抓 2330 收盤價
+# ✅ 修正後：加強 headers 與錯誤處理，穩定抓收盤價
 def get_listed_stock_price(stock_id):
     url = f'https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={stock_id}'
     headers = {
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Referer": "https://goodinfo.tw/"
     }
-    r = requests.get(url, headers=headers)
-    r.encoding = 'utf-8'
-    soup = BeautifulSoup(r.text, 'html.parser')
-
-    # 抓第一個包含 <b> 的 <nobr> 標籤中的價格（法人表格中出現）
-    tag = soup.select_one('nobr:has(b)')
-    if tag:
-        price_text = tag.text.strip().replace(",", "")
-        try:
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        r.encoding = 'utf-8'
+        soup = BeautifulSoup(r.text, 'html.parser')
+        tag = soup.select_one('nobr:has(b)')
+        if tag:
+            price_text = tag.text.strip().replace(",", "")
             return float(price_text)
-        except ValueError:
-            return None
+        else:
+            print("⚠️ 找不到 <nobr><b> 標籤，可能被擋或頁面異常")
+    except Exception as e:
+        print(f"⚠️ 發生錯誤：{e}")
     return None
 
 @app.route("/callback", methods=['POST'])
