@@ -1,51 +1,48 @@
+import os
+import requests
 from flask import Flask, request, abort
+from bs4 import BeautifulSoup
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-import os
-import requests
-from bs4 import BeautifulSoup
-import datetime
+from datetime import datetime
 
 app = Flask(__name__)
 
-line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
-handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
+LINE_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+line_bot_api = LineBotApi(LINE_TOKEN)
+handler = WebhookHandler(LINE_SECRET)
 
-def get_stock_data_twse(stock_id):
-    today = datetime.datetime.now()
-    date_str = f"{today.year - 1911}{today.strftime('%m%d')}"
-    url = f'https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={today.strftime("%Y%m%d")}&type=ALL'
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-    response = requests.get(url, headers=headers)
+def get_listed_prices(stock_id):
+    today = datetime.now().strftime("%Y%m%d")
+    url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={today}&type=ALLBUT0999"
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        data = response.json()
-        for row in data['data9']:
-            if row[0].strip() == stock_id:
-                try:
-                    close = float(row[8].replace(',', ''))
-                    high = float(row[4].replace(',', ''))
-                    low = float(row[5].replace(',', ''))
+        r = requests.get(url, headers=headers, timeout=10)
+        data = r.json()
+        if "data9" in data:
+            for row in data["data9"]:
+                if row[0].strip() == stock_id:
+                    high = float(row[4].replace(",", ""))
+                    low = float(row[5].replace(",", ""))
+                    close = float(row[8].replace(",", ""))
                     return close, high, low
-                except:
-                    return None
-        return None
-    except:
-        return None
+    except Exception as e:
+        print(f"⚠️ 抓取資料錯誤：{e}")
+    return None, None, None
 
-def calculate_cdp(close, high, low):
-    cdp = (high + low + 2 * close) / 4
-    ah = cdp + (high - low)
-    nh = 2 * cdp - low
-    nl = 2 * cdp - high
-    al = cdp - (high - low)
-    return round(ah, 1), round(nh, 1), round(nl, 1), round(al, 1)
+def calculate_cdp(C, H, L):
+    CDP = (H + L + 2 * C) / 4
+    AH = CDP + (H - L)
+    NH = 2 * CDP - L
+    NL = 2 * CDP - H
+    AL = CDP - (H - L)
+    return CDP, AH, NH, NL, AL
 
-@app.route("/", methods=['POST'])
+@app.route("/callback", methods=['POST'])
 def callback():
-    signature = request.headers['X-Line-Signature']
+    signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
     try:
         handler.handle(body, signature)
@@ -58,26 +55,26 @@ def handle_message(event):
     text = event.message.text.strip()
     if text.isdigit():
         stock_id = text
-        stock_data = get_stock_data_twse(stock_id)
-        if stock_data:
-            close, high, low = stock_data
-            ah, nh, nl, al = calculate_cdp(close, high, low)
-            message = f"""📌 {stock_id} 今日行情
-📉 收盤：{close}
-📈 高點：{high}
-📉 低點：{low}
+        C, H, L = get_listed_prices(stock_id)
+        if C and H and L:
+            CDP, AH, NH, NL, AL = calculate_cdp(C, H, L)
+            reply_text = f"""📌 {stock_id} 今日行情
+📉 收盤：{C}
+📈 高點：{H}
+📉 低點：{L}
 
 📊 明日撐壓
-🔺 強壓：{ah}
-🔻 弱壓：{high}
-🔻 弱撐：{low}
-🔽 強撐：{al}"""
+🔺 強壓：{AH:.1f}
+🔻 弱壓：{H}
+🔻 弱撐：{L}
+🔽 強撐：{AL:.1f}
+"""
         else:
-            message = f"⚠️ 今日資料尚未公布，請於收盤後（15:00 後）再試。"
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=message)
-        )
+            reply_text = "⚠️ 今日資料尚未公布，請於收盤後（15:00 後）再試。"
+    else:
+        reply_text = "請輸入股票代號。"
+
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(reply_text))
 
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True, port=int(os.getenv("PORT", 5000)))
