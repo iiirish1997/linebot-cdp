@@ -13,6 +13,7 @@ LINE_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 line_bot_api = LineBotApi(LINE_TOKEN)
 handler = WebhookHandler(LINE_SECRET)
 
+# ✅ 修正後的抓取上市股票收盤價函式
 def get_listed_stock_price(stock_id):
     url = f'https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={stock_id}'
     headers = {
@@ -22,10 +23,19 @@ def get_listed_stock_price(stock_id):
     r = requests.get(url, headers=headers)
     r.encoding = 'utf-8'
     soup = BeautifulSoup(r.text, 'html.parser')
-    # 這裡假設抓取 K 線資料中的收盤價，範例簡化：
-    price_tag = soup.select_one("td#_closingPrice")
-    if price_tag:
-        return float(price_tag.text.replace(",", ""))
+    
+    # 找到「個股資料表」中出現「收盤價」的欄位
+    table = soup.find("table", class_="b1 p4_2 r10 box_shadow")
+    if table:
+        rows = table.find_all("tr")
+        for row in rows:
+            cells = row.find_all("td")
+            if len(cells) >= 2 and "收盤" in cells[0].text:
+                price_text = cells[1].text.strip().replace(",", "")
+                try:
+                    return float(price_text)
+                except ValueError:
+                    return None
     return None
 
 @app.route("/callback", methods=['POST'])
@@ -45,7 +55,6 @@ def handle_message(event):
         stock_id = text
         price = get_listed_stock_price(stock_id)
         if price:
-            # 只處理上市，直接算 CDP 的部分略...
             reply = f"{stock_id} 上市收盤價：{price:.2f}，CDP 計算中..."
         else:
             reply = f"找不到 {stock_id} 的上市收盤價。"
