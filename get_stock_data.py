@@ -1,34 +1,35 @@
+# get_stock_data.py
 import requests
-import pandas as pd
-from datetime import datetime
+from bs4 import BeautifulSoup
 
-def fetch_today_stock_prices():
-    date_str = datetime.now().strftime("%Y%m%d")
-    url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={date_str}&type=ALLBUT0999"
-    headers = {"User-Agent": "Mozilla/5.0"}
+def get_stock_price(stock_id):
+    url = f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={stock_id}"
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://goodinfo.tw"
+    }
 
-    response = requests.get(url, headers=headers)
-    data = response.json()
+    res = requests.get(url, headers=headers)
+    soup = BeautifulSoup(res.text, "html.parser")
 
-    if "data9" not in data:
-        print("⚠️ 今日資料尚未公布或格式錯誤")
-        return
+    try:
+        price_table = soup.find("table", class_="b1 p4_2 r10 box_shadow")
+        rows = price_table.find_all("tr")
+        for row in rows:
+            cols = row.find_all("td")
+            if len(cols) >= 7 and "最高" in cols[0].text:
+                high = float(cols[1].text.replace(',', ''))
+                low = float(cols[2].text.replace(',', ''))
+                close = float(cols[6].text.replace(',', ''))
+                return {"股票代號": stock_id, "最高價": high, "最低價": low, "收盤價": close}
+    except Exception as e:
+        print(f"[錯誤] 無法抓取 {stock_id}: {e}")
+        return None
 
-    rows = []
-    for row in data["data9"]:
-        stock_id = row[0].strip()
-        name = row[1].strip()
-        try:
-            high = float(row[4].replace(",", ""))
-            low = float(row[5].replace(",", ""))
-            close = float(row[8].replace(",", ""))
-            rows.append([stock_id, name, high, low, close])
-        except:
-            continue
-
-    df = pd.DataFrame(rows, columns=["股票代號", "名稱", "最高價", "最低價", "收盤價"])
-    df.to_excel("listed_prices.xlsx", index=False)
-    print(f"✅ 已匯出 {len(df)} 筆資料至 listed_prices.xlsx")
-
-if __name__ == "__main__":
-    fetch_today_stock_prices()
+def calculate_cdp(H, L, C):
+    CDP = (H + L + 2 * C) / 4
+    AH = CDP + (H - L)
+    NH = 2 * CDP - L
+    NL = 2 * CDP - H
+    AL = CDP - (H - L)
+    return CDP, AH, H, L, AL
