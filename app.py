@@ -14,7 +14,7 @@ LINE_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 line_bot_api = LineBotApi(LINE_TOKEN)
 handler = WebhookHandler(LINE_SECRET)
 
-# ✅ 改用證交所 API 抓上市股票收盤價（當日）
+# ✅ 使用證交所收盤後 API（抓昨收，可用於 CDP）
 def get_listed_stock_price(stock_id):
     today = datetime.now().strftime("%Y%m%d")
     url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={today}&type=ALLBUT0999"
@@ -22,10 +22,11 @@ def get_listed_stock_price(stock_id):
     try:
         r = requests.get(url, headers=headers, timeout=10)
         data = r.json()
-        for row in data['data9']:  # data9 是普通股報價區
-            if row[0].strip() == stock_id:
-                price = row[8].replace(",", "").strip()
-                return float(price)
+        if "data9" in data:
+            for row in data['data9']:  # data9 = 普通股票
+                if row[0].strip() == stock_id:
+                    price = row[8].replace(",", "").strip()
+                    return float(price)
     except Exception as e:
         print(f"⚠️ 抓取證交所資料錯誤：{e}")
     return None
