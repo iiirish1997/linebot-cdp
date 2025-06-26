@@ -1,7 +1,4 @@
-flask
-line-bot-sdk
-requests
-beautifulsoup4
-pandas
-lxml
-gunicorn
+Flask>=2.0
+line-bot-sdk>=2.0
+requests>=2.25
+beautifulsoup4>=4.9
