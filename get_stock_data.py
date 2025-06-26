@@ -1,15 +1,22 @@
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
+import time
 
 def get_cdp_info(stock_id):
     url = f"https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={stock_id}"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
 
-    response = requests.get(url, headers=headers)
-    response.encoding = "utf-8"
-    soup = BeautifulSoup(response.text, "html.parser")
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+
+    driver = webdriver.Chrome(options=options)
+    driver.get(url)
+    time.sleep(3)  # 等待 JavaScript 載入
+
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+    driver.quit()
 
     try:
         table = soup.find("table", class_="b1 p4_2 r10 box_shadow")
