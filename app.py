@@ -1,10 +1,11 @@
 import os
 import requests
-from bs4 import BeautifulSoup
 from flask import Flask, request, abort
+from bs4 import BeautifulSoup
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -13,25 +14,20 @@ LINE_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 line_bot_api = LineBotApi(LINE_TOKEN)
 handler = WebhookHandler(LINE_SECRET)
 
-# ✅ 修正後：加強 headers 與錯誤處理，穩定抓收盤價
+# ✅ 改用證交所 API 抓上市股票收盤價（當日）
 def get_listed_stock_price(stock_id):
-    url = f'https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID={stock_id}'
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Referer": "https://goodinfo.tw/"
-    }
+    today = datetime.now().strftime("%Y%m%d")
+    url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={today}&type=ALLBUT0999"
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
         r = requests.get(url, headers=headers, timeout=10)
-        r.encoding = 'utf-8'
-        soup = BeautifulSoup(r.text, 'html.parser')
-        tag = soup.select_one('nobr:has(b)')
-        if tag:
-            price_text = tag.text.strip().replace(",", "")
-            return float(price_text)
-        else:
-            print("⚠️ 找不到 <nobr><b> 標籤，可能被擋或頁面異常")
+        data = r.json()
+        for row in data['data9']:  # data9 是普通股報價區
+            if row[0].strip() == stock_id:
+                price = row[8].replace(",", "").strip()
+                return float(price)
     except Exception as e:
-        print(f"⚠️ 發生錯誤：{e}")
+        print(f"⚠️ 抓取證交所資料錯誤：{e}")
     return None
 
 @app.route("/callback", methods=['POST'])
